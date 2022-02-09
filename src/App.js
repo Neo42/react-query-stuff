@@ -1,77 +1,111 @@
 import React from 'react'
+import {useQuery, useQueryClient} from 'react-query'
 import axios from 'axios'
-import {useQuery} from 'react-query'
 import {ReactQueryDevtools} from 'react-query/devtools'
 
-function App() {
-  // const [value, setValue] = React.useState('')
-  // const pokemon = useDebouncedState(value, 500)
-  const [pokemon, setPokemon] = React.useState('')
+export default function App() {
+  const [show, toggle] = React.useReducer((d) => !d, false)
+  const [postId, setPostId] = React.useState(-1)
+  const queryClient = useQueryClient()
+
+  React.useEffect(() => {
+    queryClient.prefetchQuery('posts', fetchPosts, {
+      staleTime: Infinity,
+    })
+  }, [queryClient])
+
   return (
     <>
-      <input
-        type="text"
-        // value={value}
-        value={pokemon}
-        onChange={(e) => setPokemon(e.target.value)}
-      />
-      <PokemonSearch pokemon={pokemon} />
+      <div>
+        <button onClick={toggle}>Show Posts</button>
+        {show ? (
+          postId > -1 ? (
+            <Post postId={postId} setPostId={setPostId} />
+          ) : (
+            <Posts setPostId={setPostId} />
+          )
+        ) : null}
+      </div>
       <ReactQueryDevtools />
     </>
   )
 }
 
-function PokemonSearch({pokemon}) {
-  const queryInfo = usePokemon(pokemon)
+async function fetchPosts() {
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  return axios
+    .get('https://jsonplaceholder.typicode.com/posts')
+    .then((res) => res.data.slice(0, 10))
+}
 
-  return queryInfo.isLoading ? (
-    'Loading...'
-  ) : queryInfo.isError ? (
-    queryInfo.error.message
-  ) : (
+function Posts({setPostId}) {
+  const postsQuery = useQuery('posts', fetchPosts)
+  const queryClient = useQueryClient()
+
+  return (
     <div>
-      {queryInfo.data?.sprites?.front_default ? (
-        <img src={queryInfo.data?.sprites?.front_default} alt="" />
-      ) : (
-        'Pokemon not found.'
-      )}
-      <br />
-      {queryInfo.isFetching ? 'Updating...' : null}
+      <h1>Posts {postsQuery.isFetching ? '...' : null}</h1>
+      <div>
+        {postsQuery.isLoading ? (
+          'Loading posts...'
+        ) : (
+          <ul>
+            {postsQuery.data.map((post) => {
+              return (
+                <li
+                  key={post.id}
+                  onMouseEnter={() => {
+                    queryClient.prefetchQuery(
+                      ['post', post.id],
+                      () => fetchPost(post.id),
+                      {
+                        staleTime: Infinity,
+                      },
+                    )
+                  }}>
+                  <a onClick={() => setPostId(post.id)} href="#">
+                    {post.title}
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
 
-function usePokemon(pokemon) {
-  return useQuery(
-    ['pokemon', pokemon],
-    // Pass the built-in `signal` argument of the query function to axios
-    // to cancel a query before the query promise is settled.
-    async ({signal}) =>
-      new Promise((resolve) => setTimeout(resolve, 1000))
-        .then(() =>
-          axios.get(
-            `https://pokeapi.co/api/v2/pokemon/${pokemon.toLowerCase()}`,
-            {signal},
-          ),
-        )
-        .then((res) => res.data),
-    {
-      retry: 1,
-      retryDelay: 1000,
-      cacheTime: Infinity,
-      enabled: !!pokemon,
-    },
+async function fetchPost(postId) {
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  return axios
+    .get(`https://jsonplaceholder.typicode.com/posts/${postId}`)
+    .then((res) => res.data)
+}
+
+function Post({postId, setPostId}) {
+  const postQuery = useQuery(['post', postId], () => fetchPost(postId), {
+    staleTime: 1000 * 60,
+  })
+
+  return (
+    <div>
+      <a onClick={() => setPostId(-1)} href="#">
+        Back
+      </a>
+      <br />
+      <br />
+      {postQuery.isLoading ? (
+        'Loading...'
+      ) : (
+        <>
+          {postQuery.data.title}
+          <br />
+          <br />
+          {postQuery.isFetching ? 'Updating...' : null}
+        </>
+      )}
+    </div>
   )
+  //
 }
-
-// alternative: debounce a setState
-function useDebouncedState(value, time) {
-  const [debouncedState, setDebouncedState] = React.useState(value)
-  React.useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedState(value), time)
-    return () => clearTimeout(timeout)
-  }, [time, value])
-  return debouncedState
-}
-
-export default App
