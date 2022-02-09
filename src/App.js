@@ -3,91 +3,75 @@ import axios from 'axios'
 import {useQuery} from 'react-query'
 import {ReactQueryDevtools} from 'react-query/devtools'
 
-function usePokemon() {
-  return useQuery(
-    'pokemons',
-    async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      return axios
-        .get(`https://pokeapi.co/api/v2/pokemon`)
-        .then((res) => res.data.results)
-    },
-    {
-      cacheTime: 5000, // time before inactive data gets GCed
-      staleTime: 0, // time before possible refetch
-      refetchOnWindowFocus: true,
-    },
-  )
-}
-
-function Pokemon() {
-  const queryInfo = usePokemon()
-
-  return queryInfo.isLoading ? (
-    'Loading...'
-  ) : queryInfo.isError ? (
-    queryInfo.error.message
-  ) : (
-    <div>
-      {queryInfo.data.map((result) => (
-        <div key={result.name}>{result.name}</div>
-      ))}
-      <br />
-      {queryInfo.isFetching ? 'Updating...' : null}
-    </div>
-  )
-}
-function Berries() {
-  const queryInfo = useQuery(
-    'berries',
-    async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      return axios
-        .get(`https://pokeapi.co/api/v2/berry`)
-        .then((res) => res.data.results)
-    },
-    {
-      cacheTime: 5000, // time before inactive data gets GCed
-      staleTime: 0, // time before possible refetch
-      refetchOnWindowFocus: true,
-    },
-  )
-
-  return queryInfo.isLoading ? (
-    'Loading...'
-  ) : queryInfo.isError ? (
-    queryInfo.error.message
-  ) : (
-    <div>
-      {queryInfo.data.map((result) => (
-        <div key={result.name}>{result.name}</div>
-      ))}
-      <br />
-      {queryInfo.isFetching ? 'Updating...' : null}
-    </div>
-  )
-}
-
-function Count() {
-  const queryInfo = usePokemon()
-  return <h3>You are looking at {queryInfo.data?.length ?? 0} pokemons.</h3>
-}
-
 function App() {
-  const [show, toggle] = React.useReducer((s) => !s, true)
+  // const [value, setValue] = React.useState('')
+  // const pokemon = useDebouncedState(value, 500)
+  const [pokemon, setPokemon] = React.useState('')
   return (
     <>
-      <button onClick={toggle}> {show ? 'Hide' : 'Show'}</button>
-      <br />
-      {show ? (
-        <>
-          <Count />
-          <Pokemon />
-          <Berries />
-        </>
-      ) : null}
+      <input
+        type="text"
+        // value={value}
+        value={pokemon}
+        onChange={(e) => setPokemon(e.target.value)}
+      />
+      <PokemonSearch pokemon={pokemon} />
       <ReactQueryDevtools />
     </>
   )
 }
+
+function PokemonSearch({pokemon}) {
+  const queryInfo = usePokemon(pokemon)
+
+  return queryInfo.isLoading ? (
+    'Loading...'
+  ) : queryInfo.isError ? (
+    queryInfo.error.message
+  ) : (
+    <div>
+      {queryInfo.data?.sprites?.front_default ? (
+        <img src={queryInfo.data?.sprites?.front_default} alt="" />
+      ) : (
+        'Pokemon not found.'
+      )}
+      <br />
+      {queryInfo.isFetching ? 'Updating...' : null}
+    </div>
+  )
+}
+
+function usePokemon(pokemon) {
+  return useQuery(
+    ['pokemon', pokemon],
+    // Pass the built-in `signal` argument of the query function to axios
+    // to cancel a query before the query promise is settled.
+    async ({signal}) =>
+      new Promise((resolve) => setTimeout(resolve, 1000))
+        .then(() =>
+          axios.get(
+            `https://pokeapi.co/api/v2/pokemon/${pokemon.toLowerCase()}`,
+            {signal},
+          ),
+        )
+        .then((res) => res.data),
+    {
+      retry: 1,
+      retryDelay: 1000,
+      cacheTime: Infinity,
+      enabled: !!pokemon,
+    },
+  )
+}
+
+// alternative: debounce a setState
+function useDebouncedState(value, time) {
+  const [debouncedState, setDebouncedState] = React.useState(value)
+  React.useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedState(value), time)
+    return () => clearTimeout(timeout)
+  }, [time, value])
+  return debouncedState
+}
+
 export default App
