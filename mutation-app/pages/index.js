@@ -1,36 +1,25 @@
 import React from 'react'
 import axios from 'axios'
-import { useQuery, useQueryClient } from 'react-query'
+import { useInfiniteQuery } from 'react-query'
 
 export default function Posts() {
-  const [page, setPage] = React.useState(0)
-  const queryClient = useQueryClient()
-
-  // prevent unnecessary function re-initialization of `fetchPosts` with useCallback
-  const fetchPosts = React.useCallback(() => {
-    return axios
-      .get('/api/posts', {
-        params: {
-          pageSize: 10,
-          pageOffset: page,
-        },
-      })
-      .then((res) => res.data)
-  }, [page])
-
-  const { isLoading, isFetching, data } = useQuery(
-    ['posts', { page }],
-    fetchPosts,
-    { keepPreviousData: true }
+  const fetchPosts = React.useCallback(
+    ({ pageParam = 0 }) =>
+      axios
+        .get('/api/posts', {
+          params: {
+            pageSize: 10,
+            pageOffset: pageParam,
+          },
+        })
+        .then((res) => res.data),
+    []
   )
 
-  // once the page changes, prefetch for the next page using the `nextPageOffset` in the data response
-  React.useEffect(() => {
-    queryClient.prefetchQuery(
-      ['posts', { page: data?.nextPageOffset }],
-      fetchPosts
-    )
-  }, [data?.nextPageOffset, fetchPosts, queryClient])
+  const { isLoading, isFetching, data, fetchNextPage, hasNextPage } =
+    useInfiniteQuery('posts', fetchPosts, {
+      getNextPageParam: (lastPage) => lastPage.nextPageOffset,
+    })
 
   return (
     <div>
@@ -39,22 +28,19 @@ export default function Posts() {
       ) : (
         <>
           <h3>Posts {isFetching ? <small>...</small> : null}</h3>
-          {data.items.map((post) => (
-            <li key={post.id}>{post.title}</li>
+          {data.pages.map((page, index) => (
+            <React.Fragment key={index}>
+              {page.items.map((post) => (
+                <li key={post.id}>{post.title}</li>
+              ))}
+            </React.Fragment>
           ))}{' '}
           <br />
+          <button onClick={fetchNextPage} disabled={!hasNextPage}>
+            Fetch More
+          </button>
         </>
       )}
-      <button onClick={() => setPage(page - 1)} disabled={page === 0}>
-        Previous
-      </button>{' '}
-      <button
-        onClick={() => setPage(page + 1)}
-        disabled={!data?.nextPageOffset}
-      >
-        Next
-      </button>{' '}
-      <span>Current Page: {page + 1}</span> {isFetching ? '...' : ' '}
     </div>
   )
 }
