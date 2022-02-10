@@ -1,46 +1,57 @@
 import React from 'react'
+import Link from 'next/link'
+import { useQuery } from 'react-query'
 import axios from 'axios'
-import { useInfiniteQuery } from 'react-query'
 
-export default function Posts() {
-  const fetchPosts = React.useCallback(
-    ({ pageParam = 0 }) =>
-      axios
-        .get('/api/posts', {
-          params: {
-            pageSize: 10,
-            pageOffset: pageParam,
-          },
-        })
-        .then((res) => res.data),
-    []
-  )
+const fetchPosts = async () => {
+  await new Promise((r) => setTimeout(r, 500))
+  return axios
+    .get('https://jsonplaceholder.typicode.com/posts')
+    .then((res) => res.data.slice(0, 10))
+}
 
-  const { isLoading, isFetching, data, fetchNextPage, hasNextPage } =
-    useInfiniteQuery('posts', fetchPosts, {
-      getNextPageParam: (lastPage) => lastPage.nextPageOffset,
-    })
+// getServerSideProps is a method provided by nextjs
+export const getServerSideProps = async () => {
+  const posts = await fetchPosts()
+  return {
+    props: {
+      posts,
+    },
+  }
+}
+
+export default function Posts({ posts }) {
+  const postsQuery = useQuery('posts', fetchPosts, {
+    // get server-side rendered data as initialData
+    initialData: posts,
+    // by default, react query does a refetch on mount
+    // use staleTime to prevent this refetch
+    staleTime: 60 * 1000,
+  })
 
   return (
-    <div>
-      {isLoading ? (
-        <span>Loading...</span>
-      ) : (
-        <>
-          <h3>Posts {isFetching ? <small>...</small> : null}</h3>
-          {data.pages.map((page, index) => (
-            <React.Fragment key={index}>
-              {page.items.map((post) => (
-                <li key={post.id}>{post.title}</li>
-              ))}
-            </React.Fragment>
-          ))}{' '}
-          <br />
-          <button onClick={fetchNextPage} disabled={!hasNextPage}>
-            Fetch More
-          </button>
-        </>
-      )}
-    </div>
+    <section>
+      <div>
+        <div>
+          {postsQuery.isLoading ? (
+            <span>Loading...</span>
+          ) : (
+            <>
+              <h3>Posts {postsQuery.isFetching ? <small>...</small> : null}</h3>
+              <ul>
+                {postsQuery.data.map((post) => (
+                  <Link href="/[postId]" as={`/${post.id}`} key={post.id}>
+                    <a>
+                      <li key={post.id}>{post.title}</li>
+                    </a>
+                  </Link>
+                ))}
+              </ul>
+              <br />
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }
