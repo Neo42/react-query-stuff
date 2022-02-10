@@ -1,91 +1,60 @@
 import React from 'react'
-import Link from 'next/link'
-import { useQuery, useMutation, useQueryClient } from 'react-query'
-
 import axios from 'axios'
-
-import PostForm from '../components/PostForm'
+import { useQuery, useQueryClient } from 'react-query'
 
 export default function Posts() {
+  const [page, setPage] = React.useState(0)
   const queryClient = useQueryClient()
-  const postsQuery = useQuery('posts', () =>
-    axios.get('/api/posts').then((res) => res.data)
+
+  // prevent unnecessary function re-initialization of `fetchPosts` with useCallback
+  const fetchPosts = React.useCallback(() => {
+    return axios
+      .get('/api/posts', {
+        params: {
+          pageSize: 10,
+          pageOffset: page,
+        },
+      })
+      .then((res) => res.data)
+  }, [page])
+
+  const { isLoading, isFetching, data } = useQuery(
+    ['posts', { page }],
+    fetchPosts,
+    { keepPreviousData: true }
   )
-  const { mutate, isIdle, isError, isLoading, isSuccess, error } = useMutation(
-    (values) => axios.post('/api/posts', values),
-    {
-      onMutate: (values) => {
-        // cancel all ongoing queries, if any, before optimistic update
-        queryClient.cancelQueries()
-        const backupPosts = queryClient.getQueryData('posts')
-        queryClient.setQueryData('posts', (oldPosts) => {
-          return [
-            ...oldPosts,
-            {
-              ...values,
-              id: Date.now(),
-            },
-          ]
-        })
-        return () => queryClient.setQueryData('posts', backupPosts)
-      },
-      // onError gets what onMutate returns via the third argument `rollback`
-      onError: (error, values, rollback) => {
-        if (rollback) {
-          rollback()
-        }
-      },
-      onSettled: () => queryClient.invalidateQueries('posts'),
-    }
-  )
+
+  // once the page changes, prefetch for the next page using the `nextPageOffset` in the data response
+  React.useEffect(() => {
+    queryClient.prefetchQuery(
+      ['posts', { page: data?.nextPageOffset }],
+      fetchPosts
+    )
+  }, [data?.nextPageOffset, fetchPosts, queryClient])
 
   return (
-    <section>
-      <div>
-        <div>
-          {postsQuery.isLoading ? (
-            <span>Loading...</span>
-          ) : (
-            <>
-              <h3>Posts {postsQuery.isFetching ? <small>...</small> : null}</h3>
-              <ul>
-                {postsQuery.data.map((post) => (
-                  <Link key={post.id} href="/[postId]" as={`/${post.id}`}>
-                    <a>
-                      <li key={post.id}>{post.title}</li>
-                    </a>
-                  </Link>
-                ))}
-              </ul>
-              <br />
-            </>
-          )}
-        </div>
-      </div>
-
-      <hr />
-
-      <div>
-        <h3>Create New Post</h3>
-        <div>
-          <PostForm
-            clearOnSubmit
-            onSubmit={mutate}
-            submitText={
-              isIdle
-                ? 'Create Post'
-                : isError
-                ? 'Something is wrong!'
-                : isLoading
-                ? 'Posting...'
-                : isSuccess
-                ? 'Posted!'
-                : null
-            }
-          />
-          {isError ? <pre>{error.response.data.message}</pre> : null}
-        </div>
-      </div>
-    </section>
+    <div>
+      {isLoading ? (
+        <span>Loading...</span>
+      ) : (
+        <>
+          <h3>Posts {isFetching ? <small>...</small> : null}</h3>
+          {data.items.map((post) => (
+            <li key={post.id}>{post.title}</li>
+          ))}{' '}
+          <br />
+        </>
+      )}
+      <button onClick={() => setPage(page - 1)} disabled={page === 0}>
+        Previous
+      </button>{' '}
+      <button
+        onClick={() => setPage(page + 1)}
+        disabled={!data?.nextPageOffset}
+      >
+        Next
+      </button>{' '}
+      <span>Current Page: {page + 1}</span> {isFetching ? '...' : ' '}
+    </div>
   )
 }
